@@ -1,0 +1,7 @@
+﻿*.tfstate*
+.terraform/
+*.pem
+*.key
+.env
+credentials*
+kubeconfig
