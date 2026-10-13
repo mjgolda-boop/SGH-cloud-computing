@@ -122,6 +122,108 @@ In the default VPC network, port 22 (SSH) is already open via the `default-allow
 gcloud compute instances delete sgh-vm --zone=us-central1-a --quiet
 ```
 
+### 2.4.1. Your own SSH key in GCP: `ssh-keygen` step by step
+
+`gcloud compute ssh` is convenient because it does everything for you. That's exactly why it's worth doing the same thing by hand once, to see what happens underneath. You'll also need your own key when you want to connect with plain `ssh`, from VS Code (Remote-SSH), from WSL or from Terminal on a Mac.
+
+**How a key pair works.** `ssh-keygen` creates two files. The **private key** stays on your computer and you never show it to anyone. The **public key** (ending in `.pub`) goes on the server. Think of a padlock and a key: you can hand out the padlock (public) to a hundred servers, but only your key (private) opens it. You never send a password at all.
+
+Here's something to check: the first time you ran `gcloud compute ssh`, the tool quietly called `ssh-keygen` and saved a key pair as `~/.ssh/google_compute_engine` and `~/.ssh/google_compute_engine.pub`. Look in your `~/.ssh` directory — they should be there.
+
+**Step 1. Generate a key** (Linux, WSL, macOS, and also PowerShell on Windows 10/11, which has a built-in OpenSSH client):
+
+```bash
+ssh-keygen -t ed25519 -f ~/.ssh/sgh-gcp -C student
+```
+
+- `-t ed25519` — a modern, short and secure key type,
+- `-f ~/.ssh/sgh-gcp` — the file name; you'll get `sgh-gcp` (private) and `sgh-gcp.pub` (public),
+- `-C student` — a comment. **In GCP the comment matters**: the console uses it as the username created on the machine.
+
+The program asks for a passphrase for the key. Set one — if someone steals your key file, they can't use it without the passphrase. To avoid typing it on every connection, add the key to the agent: `ssh-add ~/.ssh/sgh-gcp`.
+
+Look at the result:
+
+```bash
+ls -l ~/.ssh/sgh-gcp*          # the private key should be -rw------- (600)
+cat ~/.ssh/sgh-gcp.pub         # one line: ssh-ed25519 AAAAC3Nz... student
+```
+
+**Step 2. Give the public key to GCP.** Google Cloud stores keys in the machine's **metadata** (yes, the same metadata as in section 4) in the format `USERNAME:KEY`. An agent on the machine reads them regularly, creates the user and adds the key to that user's `~/.ssh/authorized_keys`.
+
+When creating a new machine:
+
+```bash
+echo "student:$(cat ~/.ssh/sgh-gcp.pub)" > gcp-keys.txt
+
+gcloud compute instances create sgh-vm \
+  --zone=us-central1-a \
+  --machine-type=e2-micro \
+  --image-family=ubuntu-2404-lts-amd64 \
+  --image-project=ubuntu-os-cloud \
+  --boot-disk-size=30GB \
+  --boot-disk-type=pd-standard \
+  --metadata-from-file=ssh-keys=gcp-keys.txt
+```
+
+For a machine that's already running:
+
+```bash
+gcloud compute instances add-metadata sgh-vm \
+  --zone=us-central1-a \
+  --metadata-from-file=ssh-keys=gcp-keys.txt
+```
+
+Careful: `add-metadata` **replaces** the whole `ssh-keys` value rather than appending to it. If the machine already had other keys (e.g. added by `gcloud compute ssh`), put them in `gcp-keys.txt` too, one per line. You can see the current value with `gcloud compute instances describe sgh-vm --zone=us-central1-a --format="value(metadata.items.ssh-keys)"`.
+
+In the console: *Compute Engine → VM instances → sgh-vm → Edit → Security and access → SSH Keys → Add item*, paste the whole line from the `.pub` file and save.
+
+**Step 3. Connect with plain `ssh`:**
+
+```bash
+IP=$(gcloud compute instances describe sgh-vm --zone=us-central1-a \
+  --format="get(networkInterfaces[0].accessConfigs[0].natIP)")
+
+ssh -i ~/.ssh/sgh-gcp student@"$IP"
+```
+
+The first connection asks whether you trust the server's fingerprint. Answer `yes` — the server is now stored in `~/.ssh/known_hosts`, and SSH will warn you if anyone ever tries to impersonate it.
+
+**Step 4. A shortcut in `~/.ssh/config`.** So you don't have to remember the IP address, username and key path, add this to `~/.ssh/config`:
+
+```
+Host sgh-gcp
+    HostName 34.123.45.67
+    User student
+    IdentityFile ~/.ssh/sgh-gcp
+```
+
+From now on all you need is:
+
+```bash
+ssh sgh-gcp                          # log in
+scp report.sh sgh-gcp:~              # copy a file to the machine
+scp sgh-gcp:~/result.log .           # copy a file from the machine
+```
+
+VS Code picks up the same entry: the Remote-SSH extension lists `sgh-gcp` and opens files on the cloud machine as if they were local.
+
+Remember that the default public address in GCP is **ephemeral** — it usually changes when you stop and start the machine. When it does, update `HostName`.
+
+**When your key is ignored: OS Login.** Some projects (especially company and university ones) have **OS Login** enabled. Access is then tied to your Google account and managed through IAM, and keys in metadata are skipped. You can check for `enable-oslogin=TRUE` in the project or instance metadata. In that case you add the key to your profile, not to the machine:
+
+```bash
+gcloud compute os-login ssh-keys add --key-file=~/.ssh/sgh-gcp.pub
+gcloud compute os-login describe-profile   # shows your username, e.g. jan_kowalski_gmail_com
+ssh -i ~/.ssh/sgh-gcp jan_kowalski_gmail_com@"$IP"
+```
+
+This approach is more secure — removing someone's permissions in IAM instantly cuts their access to every machine. We'll come back to this in session 5.
+
+**Cleaning up keys.** You build it, you clean it up — that goes for keys too. When you delete a machine, its metadata goes with it. But if you added a key to **project-wide** metadata or to OS Login, remove it once you no longer need it (`gcloud compute os-login ssh-keys remove --key=...`). A key you've forgotten about is a door you've forgotten to lock.
+
+> **Never** send anyone the file without the `.pub` ending, never paste it into Teams and never push it to a repository. You can show the public key to anyone. The private key — to no one, including your lecturer.
+
 ---
 
 ### 2.5. Microsoft Azure — B1s
@@ -478,6 +580,8 @@ We learn the most from things that *almost* work. Here are typical situations fr
 | Created a second e2-micro "just to try" | You got a bill | The 744-hour limit is per account, not per machine |
 | Stopped the machine instead of deleting it | Smaller bill, but not zero | A stopped machine isn't charged for CPU, but the disk and a reserved IP address still cost money |
 | `ssh -i key.pem ...` → *UNPROTECTED PRIVATE KEY FILE* | Connection refused | The key's permissions are too open; `chmod 400 key.pem` fixes it |
+| Added a key in the GCP console, but `ssh student@...` says *Permission denied* | Access refused | The user on the machine took its name from the key comment (`-C`) and you're logging in as someone else; or the project has OS Login enabled and metadata keys are ignored |
+| Added a second key with `gcloud compute instances add-metadata` | The first key stopped working | `add-metadata` replaces the whole `ssh-keys` value — you must pass all keys at once |
 | `ssh ec2-user@...` on an Ubuntu machine | *Permission denied (publickey)* | Wrong user: on Ubuntu in AWS it's `ubuntu`, on Amazon Linux it's `ec2-user` |
 | SSH "hangs" and nothing responds | Timeout | Port 22 is closed in the firewall, or your IP address changed since you created the rule |
 | `echo "..." > important_file` | The file has one line | A single `>` overwrites; `>>` appends |
@@ -513,6 +617,7 @@ We learn the most from things that *almost* work. Here are typical situations fr
 | Services | `systemctl status`, `journalctl -u` |
 | Network | `ip a`, `ss -tulpn`, `curl`, `ping` |
 | Cloud metadata | `curl http://169.254.169.254/...` (+ the provider's header) |
+| SSH keys | `ssh-keygen -t ed25519 -f ~/.ssh/name -C user`, `ssh-add`, `ssh -i`, `~/.ssh/config`, `scp` |
 
 | Platform | Create | Log in | Delete |
 |---|---|---|---|
@@ -626,6 +731,7 @@ It's a good way to quickly practise the commands from section 3, but remember th
 - You can launch a free virtual machine on **AWS, Azure and Google Cloud**, and you know where "free" ends.
 - You can see that all three platforms build a machine from **the same five building blocks**, just under different names.
 - You know the commands an administrator uses to look around a server, read logs, analyse text with pipes and manage permissions.
+- You can generate your own key pair with `ssh-keygen`, add the public key to a GCP machine and connect to it with plain `ssh`, `scp` and VS Code.
 - You know the address `169.254.169.254` and why it's both convenient and dangerous.
 - You have your first script that runs unchanged in three clouds.
 - You can practise Linux on your own laptop — with WSL on Windows, or Terminal and Multipass on a Mac — before spending a single cent in the cloud.
