@@ -571,7 +571,7 @@ After=network.target
 [Service]
 User=$USER
 WorkingDirectory=/home/$USER
-ExecStart=/home/$USER/jupyter-env/bin/jupyter lab --ip=127.0.0.1 --port=8888 --no-browser --ServerApp.trust_xheaders=True
+ExecStart=/home/$USER/jupyter-env/bin/jupyter lab --ip=127.0.0.1 --port=8888 --no-browser --ServerApp.trust_xheaders=True --ServerApp.allow_remote_access=True --ServerApp.allow_origin='*'
 Restart=on-failure
 
 [Install]
@@ -579,9 +579,8 @@ WantedBy=multi-user.target
 EOF
 
 sudo systemctl daemon-reload
-sudo systemctl enable --now jupyter
-sudo systemctl status jupyter --no-pager
-sudo ss -tlnp | grep 8888
+sudo systemctl restart jupyter
+journalctl -u jupyter --no-pager | grep token
 ```
 
 You should see `127.0.0.1:8888`. The option `--ServerApp.trust_xheaders=True` tells Jupyter to trust the `X-Real-IP` and `X-Forwarded-For` headers from nginx, so its logs show your real address instead of `127.0.0.1`.
