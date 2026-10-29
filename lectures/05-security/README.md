@@ -1,1 +1,0 @@
-﻿# Security of Cloud Services
