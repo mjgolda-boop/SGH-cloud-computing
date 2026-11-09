@@ -335,12 +335,19 @@ A few things that catch people out:
 Bucket names are global across all AWS accounts, so make yours unique, for example `sgh-cc-hw2-<your-id>`. Use lowercase letters, digits and hyphens only.
 
 ```bash
+# Variables don't survive a new CloudShell session, so set them again every time
+ID=123456                      # <-- your student ID
 BUCKET=sgh-cc-hw2-$ID
-REGION=eu-central-1
+REGION=us-east-1
+echo "BUCKET=[$BUCKET]"        # must end with your ID, not with a hyphen
 
 # 1. Create the bucket
-aws s3api create-bucket --bucket "$BUCKET" --region "$REGION" \
-  --create-bucket-configuration LocationConstraint="$REGION"
+#    us-east-1 is special: do NOT pass --create-bucket-configuration there
+aws s3api create-bucket --bucket "$BUCKET" --region "$REGION"
+
+#    (for any other allowed region, e.g. us-west-2, use instead:)
+#    aws s3api create-bucket --bucket "$BUCKET" --region us-west-2 \
+#      --create-bucket-configuration LocationConstraint=us-west-2
 
 # 2. Allow a public bucket POLICY (Block Public Access is ON by default)
 aws s3api put-public-access-block --bucket "$BUCKET" \
