@@ -7,7 +7,7 @@ Course materials for the Cloud Computing course at SGH Warsaw School of Economic
 | Session | Topic | Notebooks |
 |---|---|---|
 | 1 | [The Cloud Computing Market](lectures/01-intro-cloud-market) | — |
-| 2 | [Linux in the Cloud](lectures/02-open-source-linux) | — |
+| 2 | [Linux in the Cloud](lectures/02-open-source-linux) | yes |
 | 3–4 | [Cloud Workstations: R and Python (Jupyter) on AWS, Azure and GCP](lectures/03-cloud-workstations-r) | — |
 | 5 | [Security of Cloud Services: IAM on AWS, Azure and GCP](lectures/05-security) | — |
 | 6, 8 | [Storing Data in the Cloud: Disks, File Shares and Objects](lectures/06-virtual-disks) | — |
