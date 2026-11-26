@@ -1,7 +1,12 @@
-﻿*.tfstate*
+*.tfstate*
 .terraform/
 *.pem
 *.key
 .env
 credentials*
 kubeconfig
+
+# OS / editor junk
+.DS_Store
+Thumbs.db
+.ipynb_checkpoints/
